@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    // Base Options recommended for all projects
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM"],
+    // Enable strict type checking so you can catch bugs early
+    "strict": true,
+    // Transpile our TypeScript code to JavaScript
+    "module": "esnext",
+    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+    "outDir": "dist",
+    "paths": {
+      "@consts/*": ["./src/consts/*"],
+      "@type/*": ["./src/type/*"]
+    }
+  },
+  // Include the necessary files for your project
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
+}

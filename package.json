@@ -1,6 +1,6 @@
 {
   "name": "git-branch-tool",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "本工具是用于帮助开发者更好的管理分支",
   "type": "module",
   "bin": {

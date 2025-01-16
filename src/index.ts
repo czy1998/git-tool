@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import child_process from 'node:child_process';
 import { promisify } from 'node:util';
 import { Separator, checkbox } from '@inquirer/prompts';
@@ -49,7 +50,7 @@ process.on('uncaughtException', (error) => {
     );
     console.log(error.stack);
   } else {
-    console.log(error.stack);
+    throw error;
   }
 });
 
@@ -57,7 +58,8 @@ const spinner = ora();
 async function work() {
   spinner.start('开始获取分支信息');
   const { stdout } = await exec('git branch', { encoding: 'utf8' });
-  if (stdout.trim() === '') {
+
+  if (stdout.trim() === '' || stdout.includes('no branch')) {
     spinner.fail('运行目录下无任何分支，请检查运行目录是否正确');
     return;
   }

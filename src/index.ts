@@ -41,20 +41,25 @@ if (typeof logNum !== 'number') {
 if (logNum < 1) {
   throw new Error('logNum 不得小于1');
 }
+const spinner = ora();
 process.on('uncaughtException', (error) => {
   if (error instanceof Error && error.name === 'ExitPromptError') {
     console.log('👋 进程已终止!');
+  } else if (error.message.includes('not a git repository')) {
+    spinner.fail('获取分支信息失败');
+    console.log(`\n${error.message}\n`);
+    process.exit(1);
   } else if (error.message.includes('findLastIndex is not a function')) {
     console.log(
       '🐛 当前 node 版本不支持 findLastIndex 方法，请切换至 20+ 的版本\n',
     );
     console.log(error.stack);
+    process.exit(1);
   } else {
     throw error;
   }
 });
 
-const spinner = ora();
 async function work() {
   spinner.start('开始获取分支信息');
   const { stdout } = await exec('git branch', { encoding: 'utf8' });

@@ -112,37 +112,79 @@ async function work() {
   const selectOperations = await handleCheckBox(selectOperationConfig);
   spinner.start('执行操作中。。。');
 
-  const operationPromises = selectBranches.map(async (branch: string) => {
-    const handleOperation = selectOperations.map(
-      (operation) => `${operation} ${branch}`,
-    );
-    const command =
-      selectOperations.length > 1
-        ? handleOperation.join(' | ')
-        : handleOperation[0];
-    try {
-      await exec(command);
-      return { name: branch, succeed: true };
-    } catch (error) {
-      return { name: branch, succeed: false, reason: error };
-    }
-  });
-  const operationResult = await Promise.allSettled(operationPromises);
+  // 对每个分支逐个执行所选操作，避免使用管道符串联命令产生误判。
+  // 例如本地删除成功、远程删除失败时，仍能记录为“部分成功”。
+  const branchOperationResults = await Promise.all(
+    selectBranches.map(async (branch: string) => {
+      const opResults = [] as Array<{
+        command: string;
+        succeed: boolean;
+        reason?: any;
+      }>;
 
-  const errorList = operationResult
-    // @ts-ignore
-    .map((item) => item.value!)
-    .filter((value) => !value.succeed);
-  spinner.succeed(
-    `操作执行完毕，共「${selectBranches.length}」个分支参与，「${operationResult.length - errorList.length}」个分支操作成功，「${errorList.length}」个分支操作失败`,
+      for (const operation of selectOperations) {
+        const command = `${operation} ${branch}`;
+        try {
+          // 单独执行每个操作，并记录执行结果
+          await exec(command);
+          opResults.push({ command, succeed: true });
+        } catch (error) {
+          opResults.push({ command, succeed: false, reason: error });
+        }
+      }
+
+      return {
+        branch,
+        // 所有操作都成功才认为该分支“全部成功”
+        succeed: opResults.every((item) => item.succeed),
+        // 既有成功也有失败则视为“部分成功”
+        partial:
+          opResults.some((item) => item.succeed) &&
+          opResults.some((item) => !item.succeed),
+        opResults,
+      };
+    }),
   );
+
+  // 统计分支结果：全部成功、部分成功、全部失败
+  const fullSuccessCount = branchOperationResults.filter(
+    (item) => item.succeed,
+  ).length;
+  const partialSuccessCount = branchOperationResults.filter(
+    (item) => item.partial,
+  ).length;
+  const fullFailCount = branchOperationResults.filter((item) =>
+    item.opResults.every((op) => !op.succeed),
+  ).length;
+
+  spinner.succeed(
+    `操作执行完毕，共「${selectBranches.length}」个分支参与，` +
+      `「${fullSuccessCount}」个分支全部成功，` +
+      `「${partialSuccessCount}」个分支部分成功，` +
+      `「${fullFailCount}」个分支全部失败`,
+  );
+
+  const errorList = branchOperationResults.flatMap((branchResult) =>
+    branchResult.opResults
+      .filter((op) => !op.succeed)
+      .map((op) => ({
+        branch: branchResult.branch,
+        command: op.command,
+        reason: op.reason,
+      })),
+  );
+
   if (errorList.length) {
     let errorMsg = '';
     for (const error of errorList) {
-      errorMsg += `[${error.reason.cmd}]CC${error.reason.stderr.split('\n')[0]}\n`;
+      const stderr =
+        error.reason?.stderr?.split('\n')[0] ||
+        error.reason?.message ||
+        'unknown error';
+      errorMsg += `[${error.branch}] ${error.command} CC ${stderr}\n`;
     }
 
-    const command = `echo '${errorMsg}' | awk -F 'CC' '{print "${RED}" $1 "${RESET}|${GREEN}" $2 "${RESET}"}' | column -s '|' -t`;
+    const command = `echo '${errorMsg}' | awk -F 'CC' '{print "${GREEN}" $1 "${RESET}|${RED}" $2 "${RESET}"}' | column -s '|' -t`;
     const { stdout } = await exec(command, { encoding: 'utf8' });
     console.log(stdout);
   }

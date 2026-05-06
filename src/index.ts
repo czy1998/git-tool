@@ -20,7 +20,7 @@ const exec = promisify(child_process.exec);
 
 const args = process.argv.slice(2);
 
-const { logNum = 5, h, help } = yargs_parser(args);
+const { logNum = 5, h, help, filterList = 'master' } = yargs_parser(args);
 
 if (h || help) {
   console.log('');
@@ -29,7 +29,8 @@ if (h || help) {
   console.log('Usage:');
   console.log('');
   console.log(
-    'gTool --logNum <num>  控制各分支获取 commit 记录的数量，默认是获取 5 条',
+    'gTool --logNum <num>  控制各分支获取 commit 记录的数量，默认是获取 5 条\n' +
+      'gTool --filterList <str>  过滤不可删除分支，用英文逗号分隔',
   );
   console.log('');
 
@@ -41,6 +42,10 @@ if (typeof logNum !== 'number') {
 if (logNum < 1) {
   throw new Error('logNum 不得小于1');
 }
+if (typeof filterList !== 'string') {
+  throw new Error('filterList must be a string');
+}
+const list = filterList.split(',');
 const spinner = ora();
 process.on('uncaughtException', (error) => {
   if (error instanceof Error && error.name === 'ExitPromptError') {
@@ -81,14 +86,17 @@ async function work() {
   spinner.start(`开始获取各分支的最新${5}条commit信息`);
   const promiseList = branchList.map(async (branch, index) => {
     const { stdout } = await exec(
-      `git log ${branch} --pretty="%an|%ad|%s" --date=format:"%Y-%m-%d %H:%M:%S" -n ${logNum} | awk -F '|' '{print "${RESET}" $1 "${RESET}|${YELLOW}" $2 "${RESET}|${GREEN}" $3 "${RESET}"}' | column -s '|' -t`,
+      `git log ${branch} --pretty="%an|%ad|%s" --date=format:"%Y-%m-%d %H:%M:%S" -n ${logNum} | awk -F '|' "{printf \\"${RESET}%-10s${RESET}|${YELLOW}%s${RESET}|${GREEN}%s${RESET}\\n\\", substr(\\$1,1,10), \\$2, \\$3}" | column -s '|' -t`,
       { encoding: 'utf8' },
     );
+    // "${RESET}%-10s${RESET}
+    // 前置：确保该字段开始时颜色已重置
+    // 后置：确保该字段结束后颜色重置，避免影响后续输出
     return {
       name: branch,
       value: branch,
       description: stdout,
-      disabled: index === 0,
+      disabled: index === 0 || list.includes(branch),
     };
   });
   const result = await Promise.all(promiseList);
@@ -194,11 +202,18 @@ async function handleCheckBox(config: handleCheckBoxConfig) {
   const selectValues = await checkbox({
     message: config.message,
     choices: config.choices,
+    validate: (list) => {
+      if (list.length > 16) {
+        return `单次操作最大数量不可超过16【当前已选${list.length}】`;
+      }
+      if (config.emptyMessage && !list.length) {
+        return config.emptyMessage;
+      }
+
+      return true;
+    },
   });
-  if (!selectValues.length) {
-    spinner.fail(config.emptyMessage);
-    return await handleCheckBox(config);
-  }
+
   return selectValues;
 }
 
